@@ -1,0 +1,155 @@
+---
+title: "Untitled"
+author: "Zichun Liu"
+date: "12/18/2017"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+#data
+```{r}
+load("veiger.rdata")
+```
+
+```{r}
+capdata = capdata %>% select(text, created, screenName)
+capdata$text = iconv(capdata$text, from = "latin1", to = "ascii", sub = "byte")
+capdata$created <- as.POSIXlt(capdata$created)
+capdata$tweetid = 1:nrow(capdata)
+
+comdata = comdata %>% select(text, created, screenName)
+comdata$text = iconv(comdata$text, from = "latin1", to = "ascii", sub = "byte")
+comdata$created <- as.POSIXlt(comdata$created)
+comdata$tweetid = 1:nrow(comdata)
+```
+
+
+```{r}
+emdict.la <- read.csv('emoticon_conversion_noGraphic.csv')
+row.names(emdict.la) <- NULL
+names(emdict.la) <- c('unicode', 'bytes', 'name')
+emdict.la$emojiid <- row.names(emdict.la)
+
+emdict.jpb <- read.csv('emDict.csv') 
+row.names(emdict.jpb) <- NULL
+names(emdict.jpb) <- c('name', 'bytes', 'rencoding')
+emdict.jpb$name <- tolower(emdict.jpb$name)
+emdict.jpb$bytes <- NULL
+
+emojis <- merge(emdict.la, emdict.jpb, by = 'name') 
+emojis$emojiid <- as.numeric(emojis$emojiid)
+
+emojis <- arrange(emojis, emojiid)
+
+rm(emdict.jpb,emdict.la)
+```
+
+
+# comdata
+```{r}
+df.s <- matrix(NA, nrow = nrow(comdata), ncol = ncol(emojis))
+
+system.time(df.s <- sapply(emojis$rencoding, regexpr, comdata$text, ignore.case = T, useBytes = T))
+
+rownames(df.s) <- 1:nrow(df.s)
+colnames(df.s) <- 1:ncol(df.s) 
+df.t <- data.frame(df.s)
+df.t$tweetid <- comdata$tweetid
+df = df.t[,1:842]
+count = colSums(df > -1)
+
+emojis.m <- cbind(count, emojis)
+emojis.m <- arrange(emojis.m, desc(count))
+
+emojis.count <- subset(emojis.m, count > 0)
+
+emojis.count$dens <- round(1000 * (emojis.count$count / nrow(comdata)), 1)
+emojis.count$dens.sm <- (emojis.count$count + 1) / (nrow(comdata) + 1)
+
+emojis.count$rank <- as.numeric(row.names(emojis.count))
+emojis.count.p <- subset(emojis.count, select = c(name, dens, count, rank))
+
+```
+
+```{r}
+df.plot <- subset(emojis.count.p, rank <= 10); xlab <- 'Rank'; ylab <- 'Overall Frequency (per 1,000 Tweets)';
+setwd('ios_9_3_emoji_files/');
+df.plot <- arrange(df.plot, name);
+imgs <- lapply(paste0(df.plot$name, '.png'), png::readPNG); g <- lapply(imgs, grid::rasterGrob);
+k <- 0.20 * (10/nrow(df.plot)) * max(df.plot$dens); df.plot$xsize <- k; df.plot$ysize <- k; #df.plot$xsize <- k * (df.plot$dens / max(df.plot$dens)); df.plot$ysize <- k * (df.plot$dens / max(df.plot$dens));
+df.plot <- arrange(df.plot, name);
+g1 <- ggplot(data = df.plot, aes(x = rank, y = dens)) +
+  geom_bar(stat = 'identity', fill = 'dodgerblue4') +
+  xlab(xlab) + ylab(ylab) +
+  mapply(function(x, y, i) {
+    annotation_custom(g[[i]], xmin = x-0.5*df.plot$xsize[i], xmax = x+0.5*df.plot$xsize[i], 
+                      ymin = y-0.5*df.plot$ysize[i], ymax = y+0.5*df.plot$ysize[i])},
+    df.plot$rank, df.plot$dens, seq_len(nrow(df.plot))) +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(1, nrow(df.plot), 1), labels = seq(1, nrow(df.plot), 1)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1.10 * max(df.plot$dens))) +
+  theme(panel.grid.minor.y = element_blank(),
+        axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 14), 
+        axis.text.x  = element_text(size = 8, colour = 'black'), axis.text.y  = element_text(size = 8, colour = 'black')) + ggtitle("Emoji Trend in Communism")
+g1
+```
+```{r}
+png(paste0('emoji_barchart_', as.Date(min(comdata$created)), '_', as.Date(max(comdata$created)), '_', Sys.Date(), '_', format(Sys.time(), '%H-%M-%S'), '_n', nrow(comdata), '.png'), 
+    width = 6600, height = 4000, units = 'px', res = 1000);
+g1 
+dev.off()
+```
+
+# campdata
+```{r}
+df.s <- matrix(NA, nrow = nrow(capdata), ncol = ncol(emojis))
+
+system.time(df.s <- sapply(emojis$rencoding, regexpr, capdata$text, ignore.case = T, useBytes = T))
+
+rownames(df.s) <- 1:nrow(df.s)
+colnames(df.s) <- 1:ncol(df.s) 
+df.t <- data.frame(df.s)
+df.t$tweetid <- capdata$tweetid
+df = df.t[,1:842]
+count = colSums(df > -1)
+
+emojis.m <- cbind(count, emojis)
+emojis.m <- arrange(emojis.m, desc(count))
+
+emojis.count <- subset(emojis.m, count > 0)
+
+emojis.count$dens <- round(1000 * (emojis.count$count / nrow(capdata)), 1)
+emojis.count$dens.sm <- (emojis.count$count + 1) / (nrow(capdata) + 1)
+
+emojis.count$rank <- as.numeric(row.names(emojis.count))
+emojis.count.p <- subset(emojis.count, select = c(name, dens, count, rank))
+
+```
+
+```{r}
+df.plot <- subset(emojis.count.p, rank <= 10); xlab <- 'Rank'; ylab <- 'Overall Frequency (per 1,000 Tweets)';
+setwd('ios_9_3_emoji_files/');
+df.plot <- arrange(df.plot, name);
+imgs <- lapply(paste0(df.plot$name, '.png'), png::readPNG); g <- lapply(imgs, grid::rasterGrob);
+k <- 0.60 * (10/nrow(df.plot)) * max(df.plot$dens); df.plot$xsize <- k; df.plot$ysize <- k; #df.plot$xsize <- k * (df.plot$dens / max(df.plot$dens)); df.plot$ysize <- k * (df.plot$dens / max(df.plot$dens));
+df.plot <- arrange(df.plot, name);
+g1 <- ggplot(data = df.plot, aes(x = rank, y = dens)) +
+  geom_bar(stat = 'identity', fill = 'dodgerblue4') +
+  xlab(xlab) + ylab(ylab) +
+  mapply(function(x, y, i) {
+    annotation_custom(g[[i]], xmin = x-0.5*df.plot$xsize[i], xmax = x+0.5*df.plot$xsize[i], 
+                      ymin = y-0.5*df.plot$ysize[i], ymax = y+0.5*df.plot$ysize[i])},
+    df.plot$rank, df.plot$dens, seq_len(nrow(df.plot))) +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(1, nrow(df.plot), 1), labels = seq(1, nrow(df.plot), 1)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 1.10 * max(df.plot$dens))) +
+  theme(panel.grid.minor.y = element_blank(),
+        axis.title.x = element_text(size = 10), axis.title.y = element_text(size = 14), 
+        axis.text.x  = element_text(size = 8, colour = 'black'), axis.text.y  = element_text(size = 8, colour = 'black')) + ggtitle("Emoji Trend in Capitalism");
+g1
+```
+
